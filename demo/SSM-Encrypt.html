@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8">
+<title>SSM-Encrypt — Demo</title>
+
+<style>
+body { font-family: Arial, sans-serif; margin:20px; max-width:850px; }
+pre { background:#f4f4f4; padding:10px; white-space:pre-wrap; word-wrap:break-word; }
+.box { border:1px solid #ccc; padding:15px; margin-bottom:20px; }
+h2 { margin-top:0; }
+.success { color:green; font-weight:bold; }
+.fail { color:red; font-weight:bold; }
+.success-box { background:#e9ffe9; padding:10px; margin-top:10px; }
+.fail-box { background:#ffe9e9; padding:10px; margin-top:10px; }
+button { margin-top:8px; }
+input, textarea { font-family:inherit; }
+.toggle-link { color:#0066cc; cursor:pointer; text-decoration:underline; font-size:13px; }
+</style>
+
+<script>
+// ---------- SHA-256 ----------
+async function sha256(x){
+    const buf = new TextEncoder().encode(x);
+    const h = await crypto.subtle.digest("SHA-256", buf);
+    return [...new Uint8Array(h)].map(b=>b.toString(16).padStart(2,"0")).join("");
+}
+
+// ---------- BASIC HELPERS ----------
+const txt = id => document.getElementById(id);
+const MANIFEST = "MANIFEST-DEMO-001";
+
+function tEnc(s,k){ return [...s].map(c => (c.charCodeAt(0)+k)%256); }
+function tDec(a,k){ return a.map(b => (b-k+256)%256).map(x=>String.fromCharCode(x)).join(""); }
+
+function deviceID(){
+    let d = localStorage.getItem("SSM_DEVICE_ID");
+    if(!d){ d="DEV-"+Math.random().toString(36).slice(2); localStorage.setItem("SSM_DEVICE_ID",d); }
+    return d;
+}
+
+let prev_stamp = localStorage.getItem("SSM_PREV_STAMP") || "0000";
+
+function toggle(id){
+    const el = txt(id);
+    el.type = (el.type==="password") ? "text" : "password";
+}
+
+function toggleTrace(){
+    const box = txt("trace_box");
+    box.style.display = (box.style.display==="none") ? "block" : "none";
+}
+
+// ---------- ENCRYPT ----------
+async function doEncrypt(){
+    const msg   = txt("msg").value;
+    const pass  = txt("pass").value;
+    const mpass = txt("mpass").value;
+
+    // --- Mandatory auto-focus refinements ---
+    if(!msg){
+        alert("Please enter a message.");
+        txt("msg").focus();
+        return;
+    }
+    if(!pass){
+        alert("Please enter a passphrase.");
+        txt("pass").focus();
+        return;
+    }
+    if(!mpass){
+        alert("Please enter a master password.");
+        txt("mpass").focus();
+        return;
+    }
+
+    const key = pass.length + mpass.length;
+    const cipher = tEnc(msg,key);
+
+    const cHash        = await sha256(cipher.join(","));
+    const AUTH_MSG     = await sha256(cHash + pass);
+    const AUTH_MASTER  = await sha256(pass + mpass + deviceID());
+    const ID_STAMP     = await sha256(deviceID() + MANIFEST + cHash);
+
+    const PREV  = prev_stamp;
+    const STAMP = await sha256(PREV + cHash + AUTH_MSG);
+
+    prev_stamp = STAMP;
+    localStorage.setItem("SSM_PREV_STAMP", STAMP);
+
+    const bundle = {
+        CIPHER: cipher,
+        PREV: PREV,
+        STAMP: STAMP,
+        AUTH_MSG: AUTH_MSG,
+        AUTH_MASTER: AUTH_MASTER,
+        ID_STAMP: ID_STAMP,
+        MANIFEST: MANIFEST
+    };
+
+    txt("enc_out").textContent = JSON.stringify(bundle,null,2);
+    txt("msg").value = "";
+    txt("continuity_pos").textContent = STAMP;
+
+    txt("trace_prev").textContent       = PREV;
+    txt("trace_cipherhash").textContent = cHash;
+    txt("trace_authmsg").textContent    = AUTH_MSG;
+
+    alert("Bundle generated.");
+}
+
+// ---------- TRANSFER ----------
+function doTransfer(){
+    const b = txt("enc_out").textContent.trim();
+    if(!b){
+        alert("No bundle to transfer.");
+        return;
+    }
+
+    txt("decrypt_input").value = b;
+    alert("Bundle transferred to receiver.");
+
+    // --- Mandatory improvement: scroll receiver box into view ---
+    const target = txt("decrypt_input");
+    if(target && target.scrollIntoView){
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+}
+
+// ---------- DECRYPT ----------
+async function doDecrypt(){
+    const raw = txt("decrypt_input").value;
+    const box = txt("dec_out");
+    box.className=""; 
+    box.textContent="";
+
+    if(!raw){
+        alert("No bundle provided.");
+        txt("decrypt_input").focus();
+        return;
+    }
+
+    let B;
+    try{
+        B = JSON.parse(raw);
+    }
+    catch{
+        box.className="fail-box";
+        box.textContent="COLLAPSE: Invalid bundle format.";
+        return;
+    }
+
+    const pass  = txt("r_pass").value;
+    const mpass = txt("r_mpass").value;
+
+    // --- mandatory auto-focus refinement ---
+    if(!pass){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Missing passphrase.<br><br>Cause: AUTH_MSG";
+        txt("r_pass").focus();
+        return;
+    }
+
+    if(!mpass){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Missing master password.<br><br>Cause: AUTH_MSG";
+        txt("r_mpass").focus();
+        return;
+    }
+
+    // clear immediately after reading
+    txt("r_pass").value="";
+    txt("r_mpass").value="";
+
+    const stampKey = "SE_USED_"+B.STAMP;
+    if(localStorage.getItem(stampKey)){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Bundle already consumed.<br><br>Cause: POST-DECRYPTION";
+        return;
+    }
+
+    const cHash = await sha256(B.CIPHER.join(","));
+    const AUTH_MSG_calc = await sha256(cHash + pass);
+    if(AUTH_MSG_calc !== B.AUTH_MSG){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Authentication mismatch.<br><br>Cause: AUTH_MSG";
+        return;
+    }
+
+    const AUTH_MASTER_calc = await sha256(pass + mpass + deviceID());
+    if(AUTH_MASTER_calc !== B.AUTH_MASTER){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Device/master mismatch.<br><br>Cause: AUTH_MASTER";
+        return;
+    }
+
+    // continuity check: sha256(prev + sha256(cipher) + auth_msg)
+    const STAMP_calc = await sha256(B.PREV + cHash + B.AUTH_MSG);
+    if(STAMP_calc !== B.STAMP){
+        box.className="fail-box";
+        box.innerHTML="COLLAPSE: Continuity violation.<br><br>Cause: CONTINUITY";
+        return;
+    }
+
+    const key = pass.length + mpass.length;
+    const plaintext = tDec(B.CIPHER,key);
+
+    localStorage.setItem(stampKey,"1");
+
+    // Option A → clear bundle entirely after acceptance
+    txt("decrypt_input").value = "";
+
+    box.className="success-box";
+    box.innerHTML =
+        "<span class='success'>VALID — Bundle accepted and consumed.</span><br><br>"+
+        "PLAINTEXT: "+plaintext+"<br><br>Cause: NONE";
+}
+
+// ---------- RESET ----------
+function resetDemo(){
+    localStorage.clear();
+    prev_stamp="0000";
+
+    txt("enc_out").textContent="";
+    txt("decrypt_input").value="";
+    txt("dec_out").textContent="";
+    txt("continuity_pos").textContent="";
+
+    txt("msg").value="";
+    txt("pass").value="";
+    txt("mpass").value="";
+    txt("r_pass").value="";
+    txt("r_mpass").value="";
+
+    txt("trace_prev").textContent="";
+    txt("trace_cipherhash").textContent="";
+    txt("trace_authmsg").textContent="";
+    txt("trace_box").style.display="none";
+
+    txt("pass").type="text";
+    txt("r_pass").type="text";
+    txt("mpass").type="password";
+    txt("r_mpass").type="password";
+
+    alert("Demo reset. Continuity and device state cleared.");
+}
+</script>
+</head>
+
+<body>
+
+<h2>SSM-Encrypt — Demo</h2>
+
+<b>Continuity Position:</b> <span id="continuity_pos"></span>
+<br><br>
+
+<div class="box">
+<h3>Encrypt</h3>
+
+Message:<br>
+<input id="msg" style="width:100%"><br><br>
+
+Passphrase:<br>
+<input id="pass" type="text" style="width:100%"><br><br>
+
+Master Password:
+<span class="toggle-link" onclick="toggle('mpass')">Show/Hide</span><br>
+<input id="mpass" type="password" style="width:100%"><br><br>
+
+<button onclick="doEncrypt()">Encrypt</button>
+&nbsp;
+<button onclick="doTransfer()">Transfer → Receiver</button>
+
+<pre id="enc_out"></pre>
+
+<div class="toggle-link" onclick="toggleTrace()">Structural Trace</div>
+<div id="trace_box" style="display:none;margin-top:10px;">
+<pre>
+PREV: <span id="trace_prev"></span>
+
+SHA256(CIPHER): <span id="trace_cipherhash"></span>
+
+AUTH_MSG: <span id="trace_authmsg"></span>
+</pre>
+</div>
+</div>
+
+<div class="box">
+<h3>Decrypt</h3>
+
+Bundle:<br>
+<textarea id="decrypt_input" style="width:100%;height:120px;"></textarea><br><br>
+
+Passphrase:<br>
+<input id="r_pass" type="text" style="width:100%"><br><br>
+
+Master Password:
+<span class="toggle-link" onclick="toggle('r_mpass')">Show/Hide</span><br>
+<input id="r_mpass" type="password" style="width:100%"><br><br>
+
+<button onclick="doDecrypt()">Decrypt</button>
+
+<div id="dec_out"></div>
+</div>
+
+<button onclick="resetDemo()">Reset Demo</button>
+
+</body>
+</html>
