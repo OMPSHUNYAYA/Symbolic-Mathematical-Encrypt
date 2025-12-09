@@ -912,3 +912,742 @@ Knowing plaintext, cipher, and passphrase gives **zero advantage** against the s
 
 ---
 
+### **E10. What prevents attackers from regenerating or fabricating a new valid stamp?**
+
+Continuity makes fabrication impossible.
+
+To generate a valid `stamp_n`, an attacker must know:
+
+- the exact `stamp_(n-1)`  
+- the exact `sha256(cipher)`  
+- the exact `auth_msg_n`  
+- the exact `auth_master`  
+- the correct device identity  
+- the correct identity binding fields  
+
+Missing even **one** of these causes an immediate collapse.
+
+**Stamp Fabrication Check**
+```
+stamp_n == sha256( stamp_(n-1) + sha256(cipher) + auth_msg_n )
+```
+
+Attackers cannot:
+
+- guess the previous stamp  
+- derive it from the bundle  
+- recompute continuity  
+- substitute their own structural position  
+- alter the order of messages  
+- impersonate devices  
+- impersonate sender/receiver identities  
+
+Because `stamp_(n-1)` is **required and unrecoverable**,  
+continuity remains unforgeable.
+
+Even with:
+
+- plaintext  
+- cipher  
+- passphrase  
+- master password  
+
+they still cannot produce a structurally valid next stamp.
+
+Continuity protects the lifecycle — not secrecy — making forgery mathematically impossible.
+
+---
+
+### **E11. What if attackers modify even one byte of the bundle?**
+
+Any mutation — even a single character — triggers an immediate collapse.
+
+This is because continuity validation depends on **exact, byte-level structural alignment**.
+
+If any field is altered:
+
+- `CIPHER`
+- `PREV`
+- `STAMP`
+- `AUTH_MSG`
+- `AUTH_MASTER`
+- `ID_STAMP`
+- `MANIFEST`
+
+…the validation equation will fail.
+
+**Mutation Collapse Check**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+If attackers modify **anything**, then:
+
+- `sha256(cipher)` changes  
+- `auth_msg_n` no longer matches  
+- `auth_master` becomes invalid  
+- `id_stamp` no longer aligns  
+- continuity breaks instantly  
+
+Result:
+
+- **VALID → impossible**
+- **COLLAPSE → guaranteed**
+
+This ensures:
+
+- integrity is preserved  
+- tampering is detected immediately  
+- no partial modification can succeed  
+- mutated bundles cannot be replayed or repaired  
+
+Even a single-byte mutation destroys structural validity permanently.
+
+---
+
+### **E12. What if an attacker reorders fields inside the bundle?**
+
+Reordering **immediately breaks structural integrity**.
+
+SSM-Encrypt does **not** treat the bundle as a flexible JSON object.  
+It treats it as a **structurally ordered sequence** where every field participates in continuity.
+
+If an attacker changes the order of fields:
+
+- `CIPHER`
+- `PREV`
+- `STAMP`
+- `AUTH_MSG`
+- `AUTH_MASTER`
+- `ID_STAMP`
+- `MANIFEST`
+
+…the recomputed continuity no longer matches the original stamp.
+
+**Reordering Collapse Check**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+Reordering alters:
+
+- the internal serialization  
+- the internal hash layout  
+- the expected structural positions  
+
+This guarantees:
+
+- structural order cannot be tampered with  
+- field permutation always collapses  
+- attackers cannot rearrange fields to hide tampering  
+
+**Result:**  
+Any reordering → **COLLAPSE**.  
+The bundle becomes permanently invalid.
+
+---
+
+### **E13. What if an attacker modifies just one character in the bundle?**
+
+Any single-character mutation — even a space, comma, or bracket —  
+**breaks continuity instantly**.
+
+Why?  
+Because every field in the bundle participates (directly or indirectly) in the continuity equation:
+
+**Continuity Validation Formula**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+If an attacker modifies:
+
+- one cipher byte  
+- one hex character  
+- one bracket  
+- one digit  
+- one letter  
+- one whitespace character  
+
+…then:
+
+- `sha256(cipher)` changes  
+- `stamp_n` no longer matches  
+- identity binding collapses  
+- structural authentication fails  
+
+This makes SSM-Encrypt **strong against micro-tampering**.
+
+**Mutation Consequence:**  
+- smallest edit → **COLLAPSE**  
+- bundle becomes invalid  
+- attackers cannot patch, tweak, or subtly modify anything  
+
+**Result:**  
+Even a one-character mutation guarantees deterministic collapse,  
+with no recovery path for the attacker.
+
+---
+
+### **E14. What if an attacker tries to reorder fields inside the bundle?**
+
+Reordering **always** causes immediate collapse.
+
+Why?
+
+Because the structural fields are not independent —  
+they are **position-linked** through the continuity equation:
+
+**Continuity Validation Formula**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+If an attacker changes the order of fields like:
+
+- moving `STAMP` above `PREV`
+- shifting `AUTH_MSG`
+- reordering `ID_STAMP`
+- rearranging JSON key positions
+
+…then:
+
+- the recomputed `sha256(cipher)` no longer maps to the stamped continuity  
+- structural authentication breaks  
+- identity binding breaks  
+- message-specific ordering is lost  
+- validation collapses deterministically  
+
+Even though JSON parsers do not rely on order,  
+**SSM-Encrypt’s continuity does.**
+
+**Consequence:**  
+Reordering → **COLLAPSE** (cause: CONTINUITY)
+
+Attackers cannot:
+
+- rearrange fields,
+- hit parser edge cases,
+- exploit ordering differences between implementations,
+- or hide malicious inserts through JSON reordering.
+
+**Result:**  
+Field reordering produces an unrecoverable structural mismatch. No attacker can bypass this condition.
+
+---
+
+### **E15. Can an attacker insert extra fields into the bundle?**
+
+No — any insertion breaks the structural chain instantly.
+
+Even if an attacker adds a harmless-looking field such as:
+
+```json
+"extra": "hello"
+```
+
+or inserts hidden values like:
+
+```json
+"debug": "123",
+"temp": "xyz"
+```
+
+…the bundle **will always collapse**.
+
+Why?
+
+Because the bundle must match the exact structural fingerprint that was stamped at the moment of encryption.
+
+Insertion changes:
+
+- the byte layout,
+- the hash inputs,
+- the structural interpretation,
+- the expected validation shape.
+
+The continuity engine recomputes the expected stamp:
+
+**Continuity Validation Formula**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+Even a **single-character insertion** changes the internal JSON signature seen by the validator, causing:
+
+- `sha256(cipher)` mismatch  
+- `auth_msg_n` mismatch  
+- ordering mismatch  
+- structural collapse  
+
+**Result:**  
+Insertion → **COLLAPSE** (cause: STRUCTURE or CONTINUITY)
+
+This defends against:
+
+- metadata injection  
+- padding attacks  
+- version-field attacks  
+- replay modifications  
+- hidden side-fields  
+- malicious annotations  
+
+No attacker can add, alter, or annotate the bundle without triggering collapse.
+
+---
+
+### **E16. Can an attacker reorder fields inside the bundle?**
+
+No — reordering **instantly collapses** the bundle.
+
+Although JSON objects are often treated as unordered in many systems,  
+SSM-Encrypt treats the structural bundle as an **ordered sequence** for validation.
+
+If an attacker changes:
+
+```json
+{ "CIPHER": [...], "STAMP": "...", "PREV": "..." }
+```
+
+to:
+
+```json
+{ "STAMP": "...", "CIPHER": [...], "PREV": "..." }
+```
+
+or performs any permutation of fields, the bundle fails.
+
+Why?
+
+Because structural validation re-derives the stamp using the original ordering:
+
+**Continuity Validation Formula**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+The computed `sha256(cipher)` is identical —  
+but the *structural envelope* (the JSON layout) **is no longer the same shape** as the one produced at encryption time.
+
+This causes:
+
+- structure mismatch  
+- implicit signature mismatch  
+- continuity collapse  
+
+**Result:**  
+Reordering → **COLLAPSE** (cause: STRUCTURE)
+
+This protects against:
+
+- canonicalization attacks  
+- whitespace–ordering attacks  
+- bundle-normalization attacks  
+- reflow and serialization manipulation  
+
+SSM-Encrypt requires the exact structural layout — not just the same semantic fields — ensuring perfect structural integrity.
+
+---
+
+### **E17. Can an attacker modify or remove unused fields to bypass validation?**
+
+No — **any modification**, including removal of fields, leads to deterministic collapse.
+
+SSM-Encrypt treats the bundle as a **structurally strict object**.  
+Every field is part of the structural envelope, and the receiver performs exact-shape verification before continuity checks.
+
+If an attacker attempts to remove:
+
+- `AUTH_MASTER`  
+- `ID_STAMP`  
+- `MANIFEST`  
+- any whitespace-sensitive structural position  
+- or even inserts new, irrelevant fields  
+
+the message collapses immediately.
+
+Why?
+
+Because validation is two-layered:
+
+---
+
+#### **1. Structural Shape Check**
+Before any hashing or continuity validation happens,  
+the receiver verifies the exact structural layout:
+
+```
+expected_fields = [
+  "CIPHER",
+  "PREV",
+  "STAMP",
+  "AUTH_MSG",
+  "AUTH_MASTER",
+  "ID_STAMP",
+  "MANIFEST"
+]
+```
+
+Any deviation — missing, extra, renamed, reordered fields — produces:
+
+**COLLAPSE** (cause: STRUCTURE)
+
+---
+
+#### **2. Continuity & Authentication Check**
+
+Even if the attacker tries to hide the modification,  
+continuity still collapses because:
+
+**Continuity Validation Formula**
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+Changing *any field* changes:
+
+- `sha256(cipher)`  
+- authentication fields  
+- stamp derivation inputs  
+- structural envelope hashing position implicitly  
+
+This breaks the equality and collapses with:
+
+**cause: CONTINUITY**  
+or  
+**cause: AUTH_MSG/AUTH_MASTER**
+
+---
+
+### **Result**
+
+Removing or modifying fields always fails:
+
+- structural shape mismatch  
+- continuity invalidation  
+- authentication mismatch  
+
+Attackers **cannot bypass** validation by stripping “unused” fields —  
+because every field is structurally required.
+
+SSM-Encrypt guarantees that a bundle is valid **only in its exact, original form**.
+
+---
+
+### **E18. Can an attacker reuse fields from multiple bundles to construct a “Frankenstein” bundle?**
+
+No — assembling a hybrid or “Frankenstein” bundle from parts of different bundles  
+**always collapses** under deterministic validation.
+
+Attackers sometimes try:
+
+- taking `CIPHER` from bundle A  
+- taking `STAMP` from bundle B  
+- mixing `AUTH_MSG` from bundle C  
+- using `ID_STAMP` from a valid device  
+- splicing PREV from an older message  
+
+This never succeeds.
+
+---
+
+## **Why Frankenstein bundles fail**
+
+### **1. Structural fields are mutually dependent**
+
+Every field participates directly or indirectly in continuity:
+
+```
+stamp_n = sha256( stamp_(n-1) + sha256(cipher) + auth_msg_n )
+```
+
+This means:
+
+- `STAMP` depends on `cipher`  
+- `STAMP` depends on `auth_msg_n`  
+- `STAMP` depends on `prev_stamp`  
+- `AUTH_MASTER` depends on `cipher + master_password + device_id`  
+- `ID_STAMP` depends on `cipher + sender_id + receiver_id`  
+
+None of these can be mixed across bundles.
+
+---
+
+### **2. Each bundle exists in a unique structural position**
+
+Each bundle represents a **single point** in mathematical continuity.  
+Mixing fields creates structural contradictions:
+
+- wrong `prev_stamp`  
+- wrong identity relationship  
+- wrong device binding  
+- wrong authentication fingerprint  
+
+The validator detects this instantly.
+
+---
+
+### **3. Frankenstein bundles break in multiple ways**
+
+Depending on what the attacker splices:
+
+- **COLLAPSE: CONTINUITY**  
+- **COLLAPSE: AUTH_MSG**  
+- **COLLAPSE: AUTH_MASTER**  
+- **COLLAPSE: ID_BINDING**  
+- **COLLAPSE: STRUCTURE**  
+
+There is **no path** to a successful recombination.
+
+---
+
+### **4. Even partial reuse is impossible**
+
+Attackers may try:
+
+- taking only `CIPHER`  
+- or taking only `STAMP`  
+- or taking only public fields  
+
+But each of these fails because structural state must match *exactly*:
+
+```
+sha256( prev_stamp + sha256(cipher) + auth_msg_n ) == stamp_n
+```
+
+A recombined or spliced bundle breaks the equality immediately.
+
+---
+
+### **Result**
+
+A Frankenstein or hybrid bundle is not just invalid —  
+it is **mathematically incompatible** with SSM-Encrypt’s continuity model.
+
+No attacker can:
+
+- cut  
+- copy  
+- splice  
+- merge  
+- rearrange  
+- mix  
+- hybridize  
+
+fields from multiple bundles without causing **deterministic collapse**.
+
+---
+
+### **E19. Are two bundles with the same plaintext ever identical?**
+
+No — **two bundles with the same plaintext are never identical**, even if:
+
+- the plaintext is the same  
+- the passphrase is the same  
+- the master password is the same  
+- the sender and receiver are the same  
+- both operations occur in the same environment  
+
+This is *intentional* and fundamental to structural security.
+
+---
+
+## **SECTION F — Adoption, Interoperability & Future Extensions**
+
+---
+
+### **F1. Can this be added to existing systems?**
+
+Yes — as an overlay symbolic layer.
+
+You can attach:
+
+- transform  
+- StampChain  
+- identity binding  
+
+…to any existing encrypted or unencrypted flow.
+
+Validation happens locally, without requiring servers or infrastructure.
+
+---
+
+### **F2. What does SSM-Encrypt require for cross-platform compatibility?**
+
+Only:
+
+- SHA-256  
+- basic arithmetic  
+- plain ASCII  
+
+It works across:
+
+- browsers  
+- servers  
+- mobile  
+- embedded  
+- IoT  
+- offline devices
+
+No special hardware or libraries are required.
+
+---
+
+### **F3. Is SSM-Encrypt suitable for IoT?**
+
+Yes.
+
+Its characteristics make it ideal for constrained devices:
+
+- tiny footprint  
+- deterministic behavior  
+- zero randomness  
+- no clocks  
+- no network dependency  
+- linear, predictable compute path  
+
+IoT nodes can operate independently, validating bundles offline.
+
+---
+
+### **F4. Is a compiled/native edition planned?**
+
+Not at this stage.
+
+The HTML reference edition remains the official, auditable, deterministic implementation.
+
+Future compiled editions (C, Rust, embedded microcontroller builds)  
+will follow only after independent cryptographic review.
+
+---
+
+### **F5. What future expansions are possible?**
+
+Several layers extend naturally from the structural model:
+
+- symbolic messaging  
+- multi-device pairing  
+- multi-hop continuity  
+- encrypted ledger continuity  
+- IoT telemetry validation  
+- session-linked StampChains  
+- duplex continuity for two-way flows  
+
+All expansions remain deterministic and reproducible.
+
+---
+
+### **F6. Will post-decryption safety always remain the core principle?**
+
+Yes.
+
+Post-decryption invalidation is the defining capability of SSM-Encrypt.
+
+It ensures:
+
+- irreversible consumption  
+- zero replay  
+- zero reuse of structural states  
+- deterministic forward-only progression  
+
+This principle is permanent.
+
+---
+
+### **F7. Why identical plaintext cannot produce identical bundles?**
+
+Because bundles depend on **structural position**, not plaintext.
+
+Even if all visible inputs appear identical, the following core fields always differ:
+
+- `prev_stamp`  
+- `stamp_n`  
+- `auth_msg_n`  
+- `auth_master`  
+- `id_stamp`  
+
+---
+
+### **1. Continuity ensures every bundle has a unique structural position**
+
+`prev_stamp` always changes, therefore `stamp_n` must always be unique.
+
+**Continuity Formula**
+```
+stamp_n = sha256( stamp_(n-1) + sha256(cipher) + auth_msg_n )
+```
+
+Thus:
+
+- unique stamp → unique bundle  
+- unique bundle → unique structural position  
+
+Even identical plaintext cannot reuse the same structural position.
+
+---
+
+### **2. Cipher changes when position changes**
+
+The transform is deterministic but depends on the structural cycle.
+
+A new structural position forces new symbolic mapping.
+
+```
+plaintext → different cipher
+```
+
+So even identical plaintext values yield different ciphers across cycles.
+
+---
+
+### **3. Authentication fields depend on structural values**
+
+`AUTH_MSG`, `AUTH_MASTER`, and `ID_STAMP` all depend on:
+
+- cipher  
+- device_id  
+- sender_id  
+- stamp position  
+- passphrase/master consistency  
+
+Since cipher + stamp change → all authentication fields also change.
+
+---
+
+### **4. Structural Trace values will always differ**
+
+All components shift each cycle:
+
+- PREV  
+- sha256(cipher)  
+- AUTH_MSG  
+- STAMP  
+
+Even internal trace continuity is always unique.
+
+---
+
+### **What this means for security**
+
+- attackers cannot infer continuity patterns  
+- replays cannot fool the receiver  
+- identical plaintext does not leak similarity  
+- bundle equality is impossible  
+- observing many plaintext–cipher pairs does not help predict future bundles  
+
+---
+
+### **Result**
+
+Two identical messages produce **structurally unique bundles** every single time.
+
+SSM-Encrypt guarantees a fresh, irreversible structural state for each cycle:
+
+- unique cipher  
+- unique stamp  
+- unique authentication fields  
+- unique trace  
+- unique continuity position  
+
+**Plaintext repeat ≠ bundle repeat.**
+
