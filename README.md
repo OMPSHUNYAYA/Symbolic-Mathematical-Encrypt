@@ -2,8 +2,7 @@
 
 **Structural Continuity Encryption • Deterministic • Tiny • Offline • Post-Decryption-Safe**
 
-![GitHub Stars](https://img.shields.io/github/stars/OMPSHUNYAYA/SSM-Encrypt?style=flat&logo=github)
-![License](https://img.shields.io/badge/license-Open%20Standard-brightgreen?style=flat&logo=open-source-initiative)
+![GitHub Stars](https://img.shields.io/github/stars/OMPSHUNYAYA/Symbolic-Mathematical-Encrypt?style=flat&logo=github) ![License](https://img.shields.io/badge/license-Open%20Standard-brightgreen?style=flat&logo=open-source-initiative)
 
 ---
 
@@ -133,6 +132,70 @@ Once understood correctly, SSM-Encrypt is recognized as:
 - solving the **post-decryption lifecycle problem** that crypto never addressed  
 
 It operates *after* secrecy is established, enforcing the journey, not the cipher.
+
+---
+
+## ✅ Essential Clarifications (Solving the 4 Most Common Misunderstandings)
+
+To help readers avoid misinterpreting the structural model, here are four  
+**short, high-impact clarifications** derived directly from the official specification.
+
+### **1. Identity Binding ≠ Hardware Lock**
+**SSM-Encrypt binds continuity to a device’s structural identity**, not to physical hardware.
+
+If `device_id` changes (or localStorage resets in the demo),  
+**continuity breaks by design**.  
+This prevents **cross-device replay**, one of the core goals of Structural Continuity Encryption.
+
+### **2. LocalStorage Reset in the Demo ≠ Security Weakness**
+The browser demo stores `prev_stamp` and `device_id` in localStorage purely  
+for convenience.
+
+In production, these would live in:
+- secure enclave  
+- TPM / TEE  
+- encrypted local store  
+- embedded flash  
+
+Clearing localStorage only resets the demo environment.  
+**It does not weaken the structural model.**
+
+### **3. Determinism Is Not a Weakness — It Is Required**
+The transform is **fully deterministic** so that continuity can be verified offline without:
+- randomness  
+- IVs  
+- entropy sources  
+- servers  
+
+Predictability does **not** reduce security because  
+**continuity — not secrecy — enforces lifecycle validity.**
+
+Even if an attacker has:
+- plaintext  
+- passphrase  
+- cipher  
+
+Replay still collapses because **structural lineage has moved forward**.
+
+### **4. The Transform Is a Toy Cipher — By Design**
+The reversible transform is **not** the security primitive.  
+It only provides **local concealment**.
+
+The real security comes from:
+- **StampChain**  
+- **AUTH_MSG**  
+- **AUTH_MASTER**  
+- **device correlation**  
+- **LAW 0SE**  
+
+Real deployments pair SSM-Encrypt with AES/ChaCha20.  
+SSM-Encrypt enforces lifecycle; classical cryptography enforces secrecy.
+
+---
+
+**In one line:**  
+👉 **Confidentiality comes from the cipher; structural security comes from continuity.**  
+Together they create **post-decryption safety**, which classical encryption does not provide.
 
 ---
 
