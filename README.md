@@ -242,6 +242,7 @@ All other fields arise from **continuity, authentication, and identity binding**
 
 A simplified example (illustrative only):
 
+```
 {
   "CIPHER": [181,209,216,216,219,140,191,191,185],
   "PREV": "e3f1b0...d91c",
@@ -251,6 +252,7 @@ A simplified example (illustrative only):
   "ID_STAMP": "a823...fe10",
   "MANIFEST": "SSM-Encrypt v2.3 / browser-local"
 }
+```
 
 **Key points:**
 
